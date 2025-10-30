@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Smart Stock & Billing App (v3)</title>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      background: linear-gradient(135deg, #74ebd5, #ACB6E5);
+      min-height: 100vh;
+      margin: 0;
+      padding: 30px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .container {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+      padding: 22px;
+      width: 850px;
+      max-width: 98%;
+    }
+
+    h1 { text-align: center; color: #333; margin: 4px 0 16px; }
+
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .col { flex: 1; }
+
+    input, button, select {
+      width: 100%;
+      margin: 6px 0;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    button { background: #4CAF50; color: white; font-weight: 600; border: none; cursor: pointer; }
+    button:hover { background: #43a047; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 14px; }
+    th { background: #4CAF50; color: white; }
+
+    .btn { border: none; padding: 6px 8px; border-radius: 6px; cursor: pointer; color: white; font-size: 13px; margin-left: 6px; }
+    .edit-btn { background: #2196f3; }
+    .change-btn { background: #ff9800; }
+    .delete-btn { background: #e53935; }
+    .bill-btn { background: #673ab7; }
+    .view-btn { background: #009688; }
+    .print-btn { background: #008CBA; }
+    .edit-btn:hover { background:#1976d2; }
+    .change-btn:hover { background:#fb8c00; }
+    .delete-btn:hover { background:#c62828; }
+    .bill-btn:hover { background:#5e35b1; }
+    .view-btn:hover { background:#00796b; }
+    .print-btn:hover { background:#007bb5; }
+
+    .section { margin-top: 16px; padding-top: 12px; border-top: 2px dashed #e6e6e6; }
+    .total { margin-top: 8px; text-align: right; font-weight: 700; font-size: 15px; }
+
+    .saved-list { max-height: 220px; overflow:auto; margin-top:8px; border:1px solid #ddd; padding:8px; border-radius:8px; background:#fafafa; }
+    .bill-card { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px; border-radius:6px; margin-bottom:8px; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+
+    .viewer { margin-top:12px; padding:12px; border:1px solid #ddd; border-radius:8px; background:#fff; }
+    .viewer h4 { margin:0 0 8px 0; }
+    .small { font-size:13px; color:#555; }
+
+    /* Print layout */
+    @media print {
+      body { background: white; padding: 0; }
+      .container { box-shadow: none; border: none; }
+      button, .delete-btn, .view-btn { display: none !important; }
+    }
+
+    .invoice-header {
+      text-align: center;
+      border-bottom: 2px solid #4CAF50;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+    }
+    .invoice-header h2 { margin: 0; color: #333; }
+    .invoice-header small { color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📦 Smart Stock & Billing App (v3)</h1>
+
+    <!-- Add Product Section -->
+    <div class="row">
+      <div class="col"><input id="productName" placeholder="Product Name" /></div>
+      <div style="width:120px"><input id="productQty" type="number" placeholder="Qty" /></div>
+      <div style="width:150px"><input id="productPrice" type="number" placeholder="Price (₹)" /></div>
+      <div style="width:120px"><button onclick="addOrUpdateProduct()">Add / Update</button></div>
+    </div>
+
+    <div class="section">
+      <h3>Stock</h3>
+      <table>
+        <thead><tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th><th>Actions</th></tr></thead>
+        <tbody id="stockTable"></tbody>
+      </table>
+      <div class="total" id="stockTotal">Total Value: ₹0</div>
+    </div>
+
+    <div class="section">
+      <h3>🧾 Billing</h3>
+      <div class="row">
+        <div class="col"><input id="customerName" placeholder="Customer Name" /></div>
+      </div>
+      <div class="row">
+        <div class="col"><select id="billProduct"></select></div>
+        <div style="width:120px"><input id="billQty" type="number" placeholder="Qty" /></div>
+        <div style="width:120px"><button class="bill-btn" onclick="addToBill()">Add</button></div>
+      </div>
+      <table>
+        <thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th><th>Remove</th></tr></thead>
+        <tbody id="billTable"></tbody>
+      </table>
+      <div class="total" id="billTotal">Total: ₹0</div>
+      <button class="bill-btn" onclick="finalizeBill()">Finalize & Save Bill</button>
+      <button style="margin-left:10px" onclick="clearBill()">Clear Bill</button>
+    </div>
+
+    <div class="section">
+      <h3>Saved Bills</h3>
+      <div class="saved-list" id="savedBills"></div>
+      <button class="delete-btn" onclick="clearAllBills()">Clear All Bills</button>
+      <div id="billViewer"></div>
+    </div>
+  </div>
+
+  <script>
+    let products = JSON.parse(localStorage.getItem("products")) || [];
+    let savedBills = JSON.parse(localStorage.getItem("savedBills")) || [];
+    let currentBill = [];
+
+    function saveProducts() { localStorage.setItem("products", JSON.stringify(products)); }
+    function saveBills() { localStorage.setItem("savedBills", JSON.stringify(savedBills)); }
+
+    function addOrUpdateProduct() {
+      const name = document.getElementById("productName").value.trim();
+      const qty = parseInt(document.getElementById("productQty").value);
+      const price = parseFloat(document.getElementById("productPrice").value);
+
+      if (!name || isNaN(qty) || isNaN(price) || qty <= 0 || price <= 0) {
+        alert("Enter valid name, qty, and price.");
+        return;
+      }
+
+      const idx = products.findIndex(p => p.name.toLowerCase() === name.toLowerCase());
+      if (idx >= 0) {
+        products[idx].qty += qty;
+        products[idx].price = price;
+      } else {
+        products.push({ name, qty, price });
+      }
+
+      document.getElementById("productName").value = "";
+      document.getElementById("productQty").value = "";
+      document.getElementById("productPrice").value = "";
+
+      saveProducts();
+      renderProducts();
+      updateDropdown();
+    }
+
+    function editProduct(i) {
+      const p = products[i];
+      const newName = prompt("New name:", p.name);
+      const newPrice = parseFloat(prompt("New price:", p.price));
+      if (!newName || isNaN(newPrice) || newPrice <= 0) return alert("Invalid data");
+      p.name = newName;
+      p.price = newPrice;
+      saveProducts();
+      renderProducts();
+      updateDropdown();
+    }
+
+    function changeQty(i) {
+      const change = parseInt(prompt("Enter + or - qty:", 0));
+      if (isNaN(change)) return;
+      products[i].qty += change;
+      if (products[i].qty < 0) products[i].qty = 0;
+      saveProducts();
+      renderProducts();
+      updateDropdown();
+    }
+
+    function deleteProduct(i) {
+      if (!confirm("Delete product?")) return;
+      products.splice(i, 1);
+      saveProducts();
+      renderProducts();
+      updateDropdown();
+    }
+
+    function renderProducts() {
+      const t = document.getElementById("stockTable");
+      t.innerHTML = products.map((p, i) => `
+        <tr>
+          <td>${p.name}</td>
+          <td>${p.qty}</td>
+          <td>₹${p.price}</td>
+          <td>₹${(p.qty * p.price).toFixed(2)}</td>
+          <td>
+            <button class="btn edit-btn" onclick="editProduct(${i})">✎</button>
+            <button class="btn change-btn" onclick="changeQty(${i})">±Qty</button>
+            <button class="btn delete-btn" onclick="deleteProduct(${i})">X</button>
+          </td>
+        </tr>
+      `).join("") || `<tr><td colspan="5" class="small">No products</td></tr>`;
+      document.getElementById("stockTotal").textContent =
+        `Total Value: ₹${products.reduce((a, b) => a + b.qty * b.price, 0).toFixed(2)}`;
+    }
+
+    function updateDropdown() {
+      const sel = document.getElementById("billProduct");
+      sel.innerHTML = products.map(p => `<option value="${p.name}">${p.name} (${p.qty} left)</option>`).join("") || "<option>-- No Products --</option>";
+    }
+
+    function addToBill() {
+      const name = document.getElementById("billProduct").value;
+      const qty = parseInt(document.getElementById("billQty").value);
+      if (!name || isNaN(qty) || qty <= 0) return alert("Enter valid qty");
+      const prod = products.find(p => p.name === name);
+      if (!prod) return alert("Not found");
+      if (qty > prod.qty) return alert("Not enough stock");
+
+      const idx = currentBill.findIndex(b => b.name === name);
+      if (idx >= 0) currentBill[idx].qty += qty;
+      else currentBill.push({ name, qty, rate: prod.price });
+
+      renderBill();
+      document.getElementById("billQty").value = "";
+    }
+
+    function renderBill() {
+      const t = document.getElementById("billTable");
+      t.innerHTML = currentBill.map((b, i) => `
+        <tr>
+          <td>${b.name}</td>
+          <td>${b.qty}</td>
+          <td>₹${b.rate}</td>
+          <td>₹${(b.qty * b.rate).toFixed(2)}</td>
+          <td><button class="btn delete-btn" onclick="removeBillItem(${i})">X</button></td>
+        </tr>
+      `).join("") || `<tr><td colspan="5" class="small">No items</td></tr>`;
+      document.getElementById("billTotal").textContent =
+        `Total: ₹${currentBill.reduce((a, b) => a + b.qty * b.rate, 0).toFixed(2)}`;
+    }
+
+    function removeBillItem(i) { currentBill.splice(i, 1); renderBill(); }
+    function clearBill() { if (confirm("Clear bill?")) { currentBill = []; renderBill(); } }
+
+    function finalizeBill() {
+      const customer = document.getElementById("customerName").value.trim();
+      if (!currentBill.length) return alert("No items");
+      if (!customer) return alert("Enter customer name");
+
+      for (const b of currentBill) {
+        const p = products.find(x => x.name === b.name);
+        if (b.qty > p.qty) return alert("Not enough stock for " + b.name);
+        p.qty -= b.qty;
+      }
+
+      const bill = {
+        id: "B" + Date.now(),
+        customer,
+        datetime: new Date().toLocaleString(),
+        items: [...currentBill],
+        total: currentBill.reduce((a, b) => a + b.qty * b.rate, 0)
+      };
+      savedBills.unshift(bill);
+      currentBill = [];
+
+      saveBills();
+      saveProducts();
+      renderProducts();
+      updateDropdown();
+      renderBill();
+      renderSavedBills();
+      alert("✅ Bill saved!");
+      document.getElementById("customerName").value = "";
+    }
+
+    function renderSavedBills() {
+      const list = document.getElementById("savedBills");
+      list.innerHTML = savedBills.map(b => `
+        <div class="bill-card">
+          <div>
+            <b>${b.customer}</b> - <small>${b.id}</small>
+            <div class="small">${b.datetime}</div>
+            <div class="small">₹${b.total.toFixed(2)}</div>
+          </div>
+          <div>
+            <button class="btn view-btn" onclick="viewBill('${b.id}')">View</button>
+            <button class="btn delete-btn" onclick="deleteBill('${b.id}')">X</button>
+          </div>
+        </div>
+      `).join("") || `<div class="small">No bills saved</div>`;
+    }
+
+    function viewBill(id) {
+      const b = savedBills.find(x => x.id === id);
+      if (!b) return alert("Not found");
+      document.getElementById("billViewer").innerHTML = `
+        <div class="viewer" id="billPrintArea">
+          <div class="invoice-header">
+            <h2>🧾 Smart Stock & Billing</h2>
+            <small>Professional Invoice</small>
+          </div>
+          <p><b>Bill ID:</b> ${b.id}<br>
+             <b>Date:</b> ${b.datetime}<br>
+             <b>Customer:</b> ${b.customer}</p>
+          <table>
+            <thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+            <tbody>${b.items.map(i => `<tr><td>${i.name}</td><td>${i.qty}</td><td>₹${i.rate}</td><td>₹${(i.qty * i.rate).toFixed(2)}</td></tr>`).join("")}</tbody>
+          </table>
+          <div class="total">Total: ₹${b.total.toFixed(2)}</div>
+          <br>
+          <button class="print-btn" onclick="printBill('${b.id}')">🖨️ Print Bill</button>
+          <button onclick="closeViewer()">Close</button>
+        </div>
+      `;
+    }
+
+    function printBill(id) {
+      const bill = savedBills.find(b => b.id === id);
+      const printWindow = window.open('', '', 'width=800,height=600');
+      printWindow.document.write(`
+        <html><head><title>Bill ${bill.id}</title>
+        <style>
+          body{font-family:Segoe UI,sans-serif;padding:30px;background:#f3f9ff;}
+          h2{text-align:center;color:#333;}
+          table{width:100%;border-collapse:collapse;margin-top:15px;}
+          th,td{border:1px solid #aaa;padding:8px;text-align:center;}
+          th{background:#4CAF50;color:#fff;}
+          .total{text-align:right;margin-top:10px;font-weight:bold;}
+        </style></head><body>
+          <h2>Smart Stock & Billing</h2>
+          <p><b>Customer:</b> ${bill.customer}<br>
+          <b>Bill ID:</b> ${bill.id}<br>
+          <b>Date:</b> ${bill.datetime}</p>
+          <table><thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+          <tbody>${bill.items.map(i => `<tr><td>${i.name}</td><td>${i.qty}</td><td>₹${i.rate}</td><td>₹${(i.qty*i.rate).toFixed(2)}</td></tr>`).join('')}</tbody>
+          </table>
+          <div class="total">Total: ₹${bill.total.toFixed(2)}</div>
+        </body></html>
+      `);
+      printWindow.document.close();
+      printWindow.print();
+    }
+
+    function closeViewer() { document.getElementById("billViewer").innerHTML = ""; }
+
+    function deleteBill(id) {
+      if (!confirm("Delete this bill?")) return;
+      savedBills = savedBills.filter(b => b.id !== id);
+      saveBills();
+      renderSavedBills();
+      closeViewer();
+    }
+
+    function clearAllBills() {
+      if (!confirm("Delete ALL bills?")) return;
+      savedBills = [];
+      saveBills();
+      renderSavedBills();
+      closeViewer();
+    }
+
+    renderProducts();
+    updateDropdown();
+    renderBill();
+    renderSavedBills();
+  </script>
+</body>
+</html>
